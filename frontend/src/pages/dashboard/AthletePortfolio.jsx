@@ -1,0 +1,268 @@
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import {
+  FileText,
+  Sparkles,
+  Trophy,
+  Dumbbell,
+  Award,
+  Copy,
+  Download,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import QRCode from 'qrcode'
+import { useAuthStore } from '@/store/authStore'
+import { athleteAPI, trainingAPI, certificateAPI } from '@/api/sportsAPI'
+import { Card, PageHeader, Button, Badge } from '@/components/ui'
+import jsPDF from 'jspdf' 
+
+export default function AthletePortfolio() {
+  const user = useAuthStore((s) => s.user)
+  const userId = useAuthStore((s) => s.getUserId())
+
+  const { data: profileData } = useQuery({
+    queryKey: ['portfolio-profile', userId],
+    queryFn: () => athleteAPI.getProfile(userId).then((res) => res.data),
+    enabled: !!userId,
+    retry: false,
+  })
+
+  const { data: trainingData } = useQuery({
+    queryKey: ['portfolio-training', userId],
+    queryFn: () => trainingAPI.getLogs(userId).then((res) => res.data),
+    enabled: !!userId,
+  })
+
+  const { data: certData } = useQuery({
+    queryKey: ['portfolio-certificates', userId],
+    queryFn: () => certificateAPI.getUserCertificates(userId).then((res) => res.data),
+    enabled: !!userId,
+  })
+
+  const profile = profileData || {}
+  const logs = trainingData?.training_history || []
+  const certificates = certData?.certificates || []
+
+  const avgScore = useMemo(() => {
+    if (!logs.length) return 0
+    return Math.round(
+      logs.reduce((sum, log) => sum + Number(log.performance_score || 0), 0) /
+        logs.length
+    )
+  }, [logs])
+
+  const sponsorPitch = `
+Hello,
+
+My name is ${user?.name || 'an athlete'}, and I am a ${profile.sport || 'sports'} athlete from ${profile.state || 'India'}.
+
+I am currently competing at ${profile.level || 'developing'} level and actively improving my performance through consistent training and data tracking.
+
+My current sports profile:
+- Sport: ${profile.sport || 'Not added'}
+- Level: ${profile.level || 'Not added'}
+- State: ${profile.state || 'Not added'}
+- Total Training Sessions: ${logs.length}
+- Average Performance Score: ${avgScore}
+- Certificates: ${certificates.length}
+
+Achievements:
+${profile.achievements || 'Achievements will be updated soon.'}
+
+My goal:
+${profile.goals || 'To improve performance, participate in higher-level competitions, and represent my region professionally.'}
+
+I am looking for sponsorship support for training, equipment, travel, competition fees, and performance development.
+
+Thank you for considering my profile.
+
+Regards,
+${user?.name || 'Athlete'}
+`.trim()
+
+  const copyPitch = async () => {
+    await navigator.clipboard.writeText(sponsorPitch)
+    toast.success('Sponsor pitch copied')
+  }
+
+  const downloadPitch = () => {
+    const blob = new Blob([sponsorPitch], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${user?.name || 'athlete'}-sponsor-pitch.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const downloadPortfolioPDF = async () => {
+  const doc = new jsPDF()
+
+  const portfolioUrl = `${window.location.origin}/athlete/${userId}`
+
+  const qrImage = await QRCode.toDataURL(portfolioUrl)
+
+  doc.setFillColor(7, 11, 26)
+  doc.rect(0, 0, 210, 297, 'F')
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(26)
+  doc.text('EliteX', 20, 22)
+
+  doc.setFontSize(10)
+  doc.setTextColor(160, 160, 180)
+  doc.text('Elite Sports Intelligence', 20, 30)
+
+  doc.addImage(qrImage, 'PNG', 165, 15, 25, 25)
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(20)
+  doc.text(user?.name || 'Athlete', 20, 50)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(11)
+
+  let y = 65
+
+  const addLine = (label, value) => {
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(99, 102, 241)
+    doc.text(`${label}:`, 20, y)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(230, 230, 240)
+    doc.text(String(value || 'Not added'), 70, y)
+
+    y += 8
+  }
+
+  addLine('Sport', profile.sport)
+  addLine('Level', profile.level)
+  addLine('State', profile.state)
+  addLine('Training Sessions', logs.length)
+  addLine('Average Score', avgScore)
+  addLine('Certificates', certificates.length)
+
+  y += 8
+
+  const addSection = (title, text) => {
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(168, 85, 247)
+    doc.setFontSize(14)
+    doc.text(title, 20, y)
+    y += 8
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(230, 230, 240)
+
+    const lines = doc.splitTextToSize(text || 'Not added', 170)
+    doc.text(lines, 20, y)
+    y += lines.length * 6 + 8
+  }
+
+  addSection('Achievements', profile.achievements || 'No achievements added yet.')
+  addSection('Goals', profile.goals || 'No goals added yet.')
+  addSection('Sponsor Pitch', sponsorPitch)
+
+  doc.setFontSize(8)
+  doc.setTextColor(140, 140, 160)
+  doc.text('Generated by EliteX - Elite Sports Intelligence', 20, 285)
+
+  doc.save(`${user?.name || 'athlete'}-elitex-portfolio.pdf`)
+}
+  return (
+    <div>
+      <PageHeader
+        title="Athlete Portfolio"
+        subtitle="Create a sponsor-ready profile using your athlete data, training logs and certificates."
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+        <Card hover={false}>
+          <div className="mb-6 flex items-center gap-3">
+            <div className="rounded-2xl bg-primary/20 p-3 text-primary">
+              <FileText className="h-7 w-7" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black">Public Athlete Profile</h2>
+              <p className="text-sm text-gray-400">
+                Sponsor/scout friendly summary
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-primary/20 bg-background/40 p-6">
+            <h1 className="text-4xl font-black">{user?.name || 'Athlete'}</h1>
+            <p className="mt-2 text-gray-400">{profile.sport || 'Sport not added'} athlete from {profile.state || 'India'}</p>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <MiniStat icon={Trophy} label="Level" value={profile.level || '—'} />
+              <MiniStat icon={Dumbbell} label="Sessions" value={logs.length} />
+              <MiniStat icon={Award} label="Certificates" value={certificates.length} />
+            </div>
+
+            <div className="mt-6">
+              <h3 className="mb-2 font-bold text-white">Achievements</h3>
+              <p className="text-sm leading-7 text-gray-400">
+                {profile.achievements || 'No achievements added yet.'}
+              </p>
+            </div>
+
+            <div className="mt-6">
+              <h3 className="mb-2 font-bold text-white">Goals</h3>
+              <p className="text-sm leading-7 text-gray-400">
+                {profile.goals || 'No goals added yet.'}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card hover={false}>
+          <div className="mb-5 flex items-center gap-3">
+            <Sparkles className="h-6 w-6 text-warning" />
+            <h2 className="text-2xl font-black">Sponsor Pitch</h2>
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Badge>Auto Generated</Badge>
+            <Badge variant="success">Sponsor Ready</Badge>
+          </div>
+
+          <textarea
+            value={sponsorPitch}
+            readOnly
+            rows={18}
+            className="input-field resize-none text-sm leading-7"
+          />
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <Button variant="secondary" onClick={downloadPortfolioPDF}>
+                <Download className="h-4 w-4" />
+                PDF
+                </Button>
+            <Button onClick={copyPitch}>
+              <Copy className="h-4 w-4" />
+              Copy Pitch
+            </Button>
+
+            <Button variant="secondary" onClick={downloadPitch}>
+              <Download className="h-4 w-4" />
+              Download
+            </Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+function MiniStat({ icon: Icon, label, value }) {
+  return (
+    <div className="rounded-2xl border border-primary/20 bg-background/50 p-4">
+      <Icon className="mb-2 h-5 w-5 text-primary" />
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="mt-1 text-xl font-black text-white">{value}</p>
+    </div>
+  )
+}
