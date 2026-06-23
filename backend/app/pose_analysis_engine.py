@@ -1,10 +1,7 @@
 import cv2
 import math
 import os
-import mediapipe as mp
-
-
-mp_pose = mp.solutions.pose
+from mediapipe.python.solutions import pose as mp_pose
 
 
 def calculate_angle(a, b, c):
